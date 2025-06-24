@@ -80,7 +80,7 @@ fi
 screen -S nexus -X quit >/dev/null 2>&1 || true
 
 echo "启动 nexus-network 节点..."
-screen -dmS nexus bash -c "nexus-network start --node-id \$NODE_ID &>> /root/nexus.log"
+screen -dmS nexus bash -c "nexus-network start --node-id \$NODE_ID --max-threads 6 &>> /root/nexus.log"
 
 sleep 3
 
