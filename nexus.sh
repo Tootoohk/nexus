@@ -9,11 +9,9 @@ NEXUS_CLI_BIN="$HOME/.nexus/bin/nexus-network"
 
 mkdir -p "$LOG_DIR" "$PID_DIR"
 
-# 彩色输出
 function green() { echo -e "\033[32m$1\033[0m"; }
 function red()   { echo -e "\033[31m$1\033[0m"; }
 
-# 检查nexus-network命令是否可用，并自动source环境变量
 function check_nexus_cli() {
     source ~/.bashrc
     if [ -x "$NEXUS_CLI_BIN" ]; then
@@ -35,7 +33,6 @@ function check_nexus_cli() {
     fi
 }
 
-# ------------------- 依赖和NEXUS一键安装 -------------------
 function check_install_dependencies() {
     green "[*] 检查和安装依赖..."
     deps=(screen curl build-essential pkg-config libssl-dev git-all protobuf-compiler)
@@ -72,12 +69,10 @@ function install_glibc_239() {
     green "[*] GLIBC 2.39 安装完成。"
 }
 
-# ------------------- 启动节点并自动启动监控 -------------------
 function start_node_and_monitor() {
     local node_ids=()
     local threads
 
-    # 读取上次保存的ID
     if [ -f "$NODE_ID_FILE" ]; then
         last_ids=$(cat "$NODE_ID_FILE")
         green "[*] 检测到上次保存的节点ID: $last_ids"
@@ -87,7 +82,6 @@ function start_node_and_monitor() {
         fi
     fi
 
-    # 新输入ID
     if [ "${#node_ids[@]}" -eq 0 ]; then
         read -p "请输入节点ID（多个以英文逗号分隔）: " ids
         IFS=',' read -ra node_ids <<< "$ids"
@@ -97,34 +91,29 @@ function start_node_and_monitor() {
     read -p "请输入线程数: " threads
     check_nexus_cli
 
-    # 检查GLIBC
     GLIBC_VERSION=$(ldd --version | head -n1 | awk '{print $NF}')
-    if [ "$(echo -e "$GLIBC_VERSION\n2.39" | sort -V | head -n1)" != "2.39" ]; then
-        CMD_PREFIX="$GLIBC_DIR/lib/ld-linux-x86-64.so.2 --library-path $GLIBC_DIR/lib:$(dirname $(ldd $(which bash) | grep libc.so | awk '{print $3}')) $NEXUS_CLI_BIN"
-    else
-        CMD_PREFIX="$NEXUS_CLI_BIN"
-    fi
-
     for id in "${node_ids[@]}"; do
         id=$(echo $id | xargs)
         screen_name="nexus_$id"
         log_file="$LOG_DIR/$id.log"
         green "[*] 启动节点 $id..."
         stop_node "$id"
-        source ~/.bashrc
-        screen -dmS "$screen_name" bash -c "$CMD_PREFIX start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
+        if [ "$(echo -e "$GLIBC_VERSION\n2.39" | sort -V | head -n1)" != "2.39" ]; then
+            START_CMD="/opt/glibc-2.39/lib/ld-linux-x86-64.so.2 --library-path /opt/glibc-2.39/lib:$(dirname $(ldd $(which bash) | grep libc.so | awk '{print \$3}')) ~/.nexus/bin/nexus-network start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
+        else
+            START_CMD="~/.nexus/bin/nexus-network start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
+        fi
+        screen -dmS "$screen_name" bash -c "$START_CMD"
         sleep 1
         start_monitor "$id" "$threads" &
     done
 }
 
-# ------------------- 日志监控并自愈 -------------------
 function start_monitor() {
     local id="$1"
     local threads="$2"
     local log_file="$LOG_DIR/$id.log"
     local screen_name="nexus_$id"
-    # 监控pid写入
     local pid_file="$PID_DIR/$id.pid"
     (
     while true; do
@@ -146,21 +135,17 @@ function start_monitor() {
     echo $! > "$pid_file"
 }
 
-# ------------------- 停止节点并杀死监控 -------------------
 function stop_node() {
     local id="$1"
     local screen_name="nexus_$id"
     local pid_file="$PID_DIR/$id.pid"
-    # 停止screen节点
     screen -S "$screen_name" -X quit 2>/dev/null
-    # 杀监控进程
     if [ -f "$pid_file" ]; then
         kill $(cat "$pid_file") 2>/dev/null
         rm -f "$pid_file"
     fi
 }
 
-# ------------------- 重启节点 -------------------
 function restart_node() {
     local id="$1"
     local threads="$2"
@@ -171,18 +156,16 @@ function restart_node() {
     check_nexus_cli
     GLIBC_VERSION=$(ldd --version | head -n1 | awk '{print $NF}')
     if [ "$(echo -e "$GLIBC_VERSION\n2.39" | sort -V | head -n1)" != "2.39" ]; then
-        CMD_PREFIX="$GLIBC_DIR/lib/ld-linux-x86-64.so.2 --library-path $GLIBC_DIR/lib:$(dirname $(ldd $(which bash) | grep libc.so | awk '{print $3}')) $NEXUS_CLI_BIN"
+        START_CMD="/opt/glibc-2.39/lib/ld-linux-x86-64.so.2 --library-path /opt/glibc-2.39/lib:$(dirname $(ldd $(which bash) | grep libc.so | awk '{print \$3}')) ~/.nexus/bin/nexus-network start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
     else
-        CMD_PREFIX="$NEXUS_CLI_BIN"
+        START_CMD="~/.nexus/bin/nexus-network start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
     fi
     green "[*] 正在重启节点 $id ..."
-    source ~/.bashrc
-    screen -dmS "$screen_name" bash -c "$CMD_PREFIX start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
+    screen -dmS "$screen_name" bash -c "$START_CMD"
     sleep 1
     start_monitor "$id" "$threads" &
 }
 
-# ------------------- 重启菜单 -------------------
 function restart_menu() {
     ids=$(ls $LOG_DIR | sed 's/.log$//')
     green "当前运行节点: $ids"
@@ -197,7 +180,6 @@ function restart_menu() {
     fi
 }
 
-# ------------------- 删除节点菜单 -------------------
 function delete_menu() {
     ids=$(ls $LOG_DIR | sed 's/.log$//')
     green "当前运行节点: $ids"
@@ -210,7 +192,6 @@ function delete_menu() {
     fi
 }
 
-# ------------------- 查看节点日志 -------------------
 function view_logs() {
     ids=$(ls $LOG_DIR | sed 's/.log$//')
     green "当前运行节点: $ids"
@@ -218,7 +199,6 @@ function view_logs() {
     tail -f "$LOG_DIR/$lid.log"
 }
 
-# ------------------- 主菜单 -------------------
 while true; do
     green "========= Nexus CLI 节点管理器 ========="
     echo "1. 一键安装依赖和NEXUS"
