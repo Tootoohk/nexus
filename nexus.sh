@@ -99,7 +99,8 @@ function start_node_and_monitor() {
         green "[*] 启动节点 $id..."
         stop_node "$id"
         if [ "$(echo -e "$GLIBC_VERSION\n2.39" | sort -V | head -n1)" != "2.39" ]; then
-            START_CMD="/opt/glibc-2.39/lib/ld-linux-x86-64.so.2 --library-path /opt/glibc-2.39/lib:$(dirname $(ldd $(which bash) | grep libc.so | awk '{print \$3}')) ~/.nexus/bin/nexus-network start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
+            LIBC_PATH=$(ldd $(which bash) | grep libc.so | awk '{print $3}')
+            START_CMD="/opt/glibc-2.39/lib/ld-linux-x86-64.so.2 --library-path /opt/glibc-2.39/lib:$LIBC_PATH ~/.nexus/bin/nexus-network start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
         else
             START_CMD="~/.nexus/bin/nexus-network start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
         fi
