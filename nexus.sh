@@ -13,8 +13,9 @@ mkdir -p "$LOG_DIR" "$PID_DIR"
 function green() { echo -e "\033[32m$1\033[0m"; }
 function red()   { echo -e "\033[31m$1\033[0m"; }
 
-# 检查nexus-network命令是否可用
+# 检查nexus-network命令是否可用，并自动source环境变量
 function check_nexus_cli() {
+    source ~/.bashrc
     if [ -x "$NEXUS_CLI_BIN" ]; then
         true
     elif command -v nexus-network >/dev/null 2>&1; then
@@ -22,7 +23,12 @@ function check_nexus_cli() {
     else
         green "[*] 未检测到 nexus-network，正在自动安装..."
         curl https://cli.nexus.xyz/ | sh
-        if [ ! -x "$NEXUS_CLI_BIN" ]; then
+        source ~/.bashrc
+        if [ -x "$NEXUS_CLI_BIN" ]; then
+            true
+        elif command -v nexus-network >/dev/null 2>&1; then
+            NEXUS_CLI_BIN="$(command -v nexus-network)"
+        else
             red "nexus-network 安装失败，请检查网络或权限！"
             exit 1
         fi
@@ -104,8 +110,8 @@ function start_node_and_monitor() {
         screen_name="nexus_$id"
         log_file="$LOG_DIR/$id.log"
         green "[*] 启动节点 $id..."
-        # 先杀旧节点和监控
         stop_node "$id"
+        source ~/.bashrc
         screen -dmS "$screen_name" bash -c "$CMD_PREFIX start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
         sleep 1
         start_monitor "$id" "$threads" &
@@ -170,6 +176,7 @@ function restart_node() {
         CMD_PREFIX="$NEXUS_CLI_BIN"
     fi
     green "[*] 正在重启节点 $id ..."
+    source ~/.bashrc
     screen -dmS "$screen_name" bash -c "$CMD_PREFIX start --node-id $id --headless --max-threads $threads 2>&1 | tee -a $log_file"
     sleep 1
     start_monitor "$id" "$threads" &
